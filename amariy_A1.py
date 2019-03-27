@@ -19,6 +19,7 @@ so they are anonymous (and your 'name' is expected to be funny, no pressure).
 # from config import *
 from contextlib import contextmanager
 from operator import add, attrgetter
+from random import sample
 from timeit import default_timer
 import copy
 
@@ -60,10 +61,15 @@ AWARD_GRASS = 1
 # Constants
 ###############################################################################
 
-AWARD_SHEEP = 50
+#[Awards]
+AWARD_SHEEP = 100
 
+#[Penalty]
+PENALTY_MOVE_NONE = -1
+PENALTY_NEAR_WOLF = -float("inf")
+
+#[Movements]
 MOVE_COORDS = [(0, -1), (1, 0), (0, 1), (-1, 0)]
-
 COORD_TO_MOVE_CONST = {
         (0, 0): MOVE_NONE,
         (0, -1): MOVE_UP,
@@ -94,14 +100,10 @@ def debug_time(func):
             return value
     return wrapper
 
-def debug_playfield(func):
-    def wrapper(self, *args, **kwargs):
-        value = func(self, *args, **kwargs)
-        print("score:", self.score)
-        for i in self.grass_path:
-            print("dist:", len(i), "path:", i)
-        for i in self.rhubarb_path:
-            print("dist:", len(i), "path:", i)
+def debug_return(func):
+    def wrapper(*args, **kwargs):
+        value = func(*args, **kwargs)
+        print("value:", value, ">>> args:", *args, **kwargs)
         return value
     return wrapper
 
@@ -145,10 +147,10 @@ def sheep_score(playfield, player_nr):
                   for i in playfield.grass]
 
     if is_near(sheep, enemy_wolf):
-        score = -float('inf')
+        score = PENALTY_NEAR_WOLF
     else:
-        score += sum(map(lambda x: AWARD_GRASS / (len(x) + 1), grass_path)) \
-               + sum(map(lambda x: AWARD_RHUBARB / (len(x) + 1), rhubarb_path))
+        score += sum(map(lambda x: AWARD_RHUBARB / (len(x) + 1), rhubarb_path)) \
+               + sum(map(lambda x: AWARD_GRASS / (len(x) + 1), grass_path))
 
     return score
 
@@ -159,6 +161,7 @@ def wolf_score(playfield, player_nr):
 
     score = 0
     wolf = playfield.get_wolf(player_nr)
+    sheep = playfield.get_sheep(player_nr)
     enemy_sheep = playfield.get_sheep(player_nr % 2 + 1)
     if wolf in playfield.rhubarb:
         playfield.rhubarb.remove(wolf)
@@ -167,18 +170,17 @@ def wolf_score(playfield, player_nr):
         playfield.grass.remove(wolf)
         score = AWARD_GRASS
 
-    sheep_path = astar(playfield.figure + playfield.fence, wolf, enemy_sheep)
-    rhubarb_path = [astar(playfield.figure + playfield.fence, enemy_sheep, i)
-                    for i in playfield.rhubarb]
-    grass_path = [astar(playfield.figure + playfield.fence, enemy_sheep, i)
-                  for i in playfield.grass]
+    sheep_path = astar(playfield.figure + playfield.fence, wolf, sheep)
+    enemy_sheep_path = astar(playfield.figure + playfield.fence, wolf, enemy_sheep)
 
-    if is_near(wolf, enemy_sheep):
-        score = float('inf')
-    else:
-        score += AWARD_SHEEP / (len(sheep_path) + 1) \
-               + sum(map(lambda x: AWARD_GRASS / (len(x) + 1), grass_path)) \
-               + sum(map(lambda x: AWARD_RHUBARB / (len(x) + 1), rhubarb_path))
+    score += AWARD_SHEEP / (len(enemy_sheep_path) + 1)
+    if len(sheep_path) > len(enemy_sheep_path):
+        rhubarb_path = [astar(playfield.figure + playfield.fence, wolf, i)
+                        for i in playfield.rhubarb]
+        grass_path = [astar(playfield.figure + playfield.fence, wolf, i)
+                      for i in playfield.grass]
+        score += sum(map(lambda x: AWARD_RHUBARB / (len(x) + 1), rhubarb_path)) \
+               + sum(map(lambda x: AWARD_GRASS / (len(x) + 1), grass_path))
 
     return score
 
@@ -289,9 +291,9 @@ class Playfield:
         return self.figure[player_nr + 1]
 
     def is_coord_available(self, coord):
-        if not (0 <= coord[0] < FIELD_WIDTH and 0 <= coord[1] < FIELD_HEIGHT):
-            return False
-        return not coord in self.figure + self.fence
+        return not (coord in self.fence
+                    and 0 <= coord[0] < FIELD_WIDTH
+                    and 0 <= coord[1] < FIELD_HEIGHT)
 
     def simulate_sheep(self, player_nr, coord):
         """
@@ -328,13 +330,17 @@ class Alfunx():
     @debug_time
     def debug_move_sheep(self, player_nr, field):
         playfield = Playfield(field)
-        score = sheep_score(playfield, player_nr)
         coord = (0, 0)
+        score = sheep_score(playfield, player_nr)
+        if playfield.grass or playfield.rhubarb:
+            score += PENALTY_MOVE_NONE
         print("score:", score)
 
-        for move in MOVE_COORDS:
+        for move in sample(MOVE_COORDS, len(MOVE_COORDS)):
             new_coord = tuple(map(add, playfield.get_sheep(player_nr), move))
             if not playfield.is_coord_available(new_coord):
+                continue
+            if new_coord in playfield.figure:
                 continue
             p = playfield.simulate_sheep(player_nr, new_coord)
             s = sheep_score(p, player_nr)
@@ -351,13 +357,15 @@ class Alfunx():
     @debug_time
     def debug_move_wolf(self, player_nr, field):
         playfield = Playfield(field)
-        score = wolf_score(playfield, player_nr)
         coord = (0, 0)
+        score = wolf_score(playfield, player_nr) + PENALTY_MOVE_NONE
         print("score:", score)
 
-        for move in MOVE_COORDS:
+        for move in sample(MOVE_COORDS, len(MOVE_COORDS)):
             new_coord = tuple(map(add, playfield.get_wolf(player_nr), move))
             if not playfield.is_coord_available(new_coord):
+                continue
+            if new_coord in [playfield.get_sheep(player_nr), playfield.get_wolf(player_nr % 2 + 1)]:
                 continue
             p = playfield.simulate_wolf(player_nr, new_coord)
             s = wolf_score(p, player_nr)
