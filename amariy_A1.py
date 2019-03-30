@@ -19,10 +19,12 @@ so they are anonymous (and your 'name' is expected to be funny, no pressure).
 # from config import *
 from collections import deque
 from contextlib import contextmanager
-from operator import add, attrgetter
+from copy import deepcopy
+from heapq import heappush, heappop
+from itertools import islice
+from operator import add
 from random import sample
 from timeit import default_timer
-import copy
 
 # Constants (config)
 ###############################################################################
@@ -140,23 +142,29 @@ def sheep_score(playfield, player_nr):
         return PENALTY_NEAR_WOLF
 
     if not playfield.items:
-        enemy_sheep_path = astar([enemy_sheep, sheep] + playfield.fences, sheep, enemy_sheep)
+        enemy_sheep_path = astar(playfield.fences.union([enemy_sheep, sheep]), sheep, enemy_sheep)
         return 1 / len(enemy_sheep_path) + wolf_score(playfield, player_nr)
 
     # Score if sheep is on item
     score = playfield.items.pop(sheep) if sheep in playfield.items else 0
 
     # Paths
-    item_path = bfs(playfield.figures + playfield.fences, sheep, playfield.items)
-    enemy_item_path = bfs(playfield.figures + playfield.fences, enemy_sheep, playfield.items)
+    item_path = dict(bfs(playfield.fences.union(playfield.figures),
+                         sheep, set(playfield.items.keys())))
+    # item_path = dict(islice(bfs(playfield.fences.union(playfield.figures),
+    #                             sheep, set(playfield.items.keys())), 5))
+    # enemy_item_path = dict(bfs(playfield.fences.union(playfield.figures),
+    #                            enemy_sheep, set(playfield.items.keys())))
+    #
+    # # Scores
+    # item_scores = dict(map(lambda a: (a[0], playfield.items[a[0]] / len(a[1])),
+    #                        item_path.items()))
+    # enemy_item_scores = dict(map(lambda a: (a[0], playfield.items[a[0]] / (len(a[1]) + 1)),
+    #                              enemy_item_path.items()))
+    #
+    # return score + sum([(item_scores[k] - enemy_item_scores[k]) for k in playfield.items])
 
-    # Scores
-    item_scores = dict(map(lambda a: (a[0], playfield.items[a[0]] / len(a[1])),
-                           item_path.items()))
-    enemy_item_scores = dict(map(lambda a: (a[0], playfield.items[a[0]] / (len(a[1]) + 1)),
-                                 enemy_item_path.items()))
-
-    return score + sum([(item_scores[k] - enemy_item_scores[k]) for k in playfield.items])
+    return score + sum(map(lambda a: playfield.items[a[0]] / len(a[1]), item_path.items()))
 
 def wolf_score(playfield, player_nr):
     """
@@ -172,8 +180,8 @@ def wolf_score(playfield, player_nr):
         return AWARD_SHEEP
 
     # Paths
-    sheep_path = astar([enemy_wolf, enemy_sheep] + playfield.fences, wolf, sheep)
-    enemy_sheep_path = astar([enemy_sheep, sheep] + playfield.fences, wolf, enemy_sheep)
+    sheep_path = astar(playfield.fences.union([enemy_wolf, enemy_sheep]), wolf, sheep)
+    enemy_sheep_path = astar(playfield.fences.union([enemy_sheep, sheep]), wolf, enemy_sheep)
 
     # Score for enemy_sheep distance
     score = AWARD_SHEEP / len(enemy_sheep_path)
@@ -184,8 +192,10 @@ def wolf_score(playfield, player_nr):
 
     if len(sheep_path) > len(enemy_sheep_path):
         # Paths
-        item_path = bfs(playfield.figures + playfield.fences, sheep, playfield.items)
-        enemy_item_path = bfs(playfield.figures + playfield.fences, enemy_sheep, playfield.items)
+        item_path = dict(bfs(playfield.fences.union(playfield.figures),
+                             sheep, set(playfield.items.keys())))
+        enemy_item_path = dict(bfs(playfield.fences.union(playfield.figures),
+                                   enemy_sheep, set(playfield.items.keys())))
 
         # Scores
         item_scores = dict(map(lambda a: (a[0], playfield.items[a[0]] / len(a[1]) + 1),
@@ -215,6 +225,9 @@ class Node():
     def __eq__(self, other):
         return self.coord == other.coord
 
+    def __lt__(self, other):
+        return self.f < other.f
+
 def astar(obstacles, start, end):
     """
     Returns a list of tuples (x, y) indicating coordinates, as a path from the
@@ -228,13 +241,12 @@ def astar(obstacles, start, end):
 
     start_node = Node(None, start)
     end_node = Node(None, end)
-    queue = [start_node]
-    seen = []
+    heap = [start_node]
+    seen = set()
 
-    while queue:
-        node = min(queue, key=attrgetter("f"))
-        queue.remove(node)
-        seen.append(node.coord)
+    while heap:
+        node = heappop(heap)
+        seen.add(node.coord)
 
         # Found end_node, return path excluding start_node
         if node == end_node:
@@ -250,36 +262,37 @@ def astar(obstacles, start, end):
 
             new_node = Node(node, coord)
 
-            # Node is already in queue
-            for open_node in queue:
+            # Node is already in heap
+            for open_node in heap:
                 if new_node == open_node and new_node.g > open_node.g:
                     break
-            # Node is not yet in queue
+            # Node is not yet in heap
             else:
                 new_node.h = sum(map(distance, new_node.coord, end_node.coord))
                 new_node.f = new_node.g + new_node.h
-                queue.append(new_node)
+                heappush(heap, new_node)
 
 # Breadth First Search (BFS) algorithm
 ###############################################################################
 
-def bfs(obstacles, start, search_coords):
+def bfs(obstacles, start, end_coords):
     """
     Returns a dictionary with tuples (x, y) as keys indicating coordinates, and
     a list of tuples (x, y) as values indicating the path from the given start
-    to the key's cordinate considering the given obstacles.
+    to the key's cordinate considering the given obstacles. Mutates
+    'end_coords'.
     """
 
-    queue = deque([[start]])
     seen = set([start])
-    paths = {}
+    queue = deque([[start]])
 
-    while queue:
+    while queue and end_coords:
         path = queue.popleft()
         current = path[-1]
 
-        if current in search_coords:
-            paths[current] = path
+        if current in end_coords:
+            end_coords.remove(current)
+            yield (current, path)
 
         for coord in [tuple(map(add, current, i)) for i in MOVE_COORDS]:
             if not (0 <= coord[0] < FIELD_WIDTH and 0 <= coord[1] < FIELD_HEIGHT):
@@ -289,8 +302,6 @@ def bfs(obstacles, start, search_coords):
 
             queue.append(path + [coord])
             seen.add(coord)
-
-    return paths
 
 # Playfield class
 ###############################################################################
@@ -303,7 +314,7 @@ class Playfield:
     def __init__(self, field):
         self.figures = 4 * [None]
         self.items = {}
-        self.fences = []
+        self.fences = set()
 
         # Parse field strings
         for y, line in enumerate(field):
@@ -321,7 +332,7 @@ class Playfield:
                 elif char == CELL_RHUBARB:
                     self.items[(x, y)] = AWARD_RHUBARB
                 elif char == CELL_FENCE:
-                    self.fences.append((x, y))
+                    self.fences.add((x, y))
                 elif char == CELL_SHEEP_1_d:
                     self.figures[0] = (x, y)
                 elif char == CELL_SHEEP_2_d:
@@ -342,7 +353,7 @@ class Playfield:
         """
         Simulate sheep movement, returns copy of playfield.
         """
-        playfield = copy.deepcopy(self)
+        playfield = deepcopy(self)
         playfield.figures[player_nr - 1] = coord
         return playfield
 
@@ -350,7 +361,7 @@ class Playfield:
         """
         Simulate wolf movement, returns copy of playfield.
         """
-        playfield = copy.deepcopy(self)
+        playfield = deepcopy(self)
         playfield.figures[player_nr + 1] = coord
         return playfield
 
