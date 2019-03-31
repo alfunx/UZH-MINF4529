@@ -18,13 +18,10 @@ so they are anonymous (and your 'name' is expected to be funny, no pressure).
 
 # from config import *
 from collections import deque
-from contextlib import contextmanager
 from copy import deepcopy
 from heapq import heappush, heappop
-from itertools import islice
 from operator import add
 from random import sample
-from timeit import default_timer
 
 # Constants (config)
 ###############################################################################
@@ -81,35 +78,13 @@ COORD_TO_MOVE_CONST = {
         (0, 1): MOVE_DOWN,
         (-1, 0): MOVE_LEFT
         }
-
-# Timer
-###############################################################################
-
-@contextmanager
-def elapsed_timer():
-    start = default_timer()
-    elapser = lambda: default_timer() - start
-    yield elapser()
-    end = default_timer()
-    elapser = lambda: end-start
-
-# Decorators
-###############################################################################
-
-def debug_time(func):
-    def wrapper(*args, **kwargs):
-        with elapsed_timer() as elapsed:
-            value = func(*args, **kwargs)
-            print(" > Time:", elapsed)
-            return value
-    return wrapper
-
-def debug_return(func):
-    def wrapper(*args, **kwargs):
-        value = func(*args, **kwargs)
-        print("value:", value, ">>> args:", *args, **kwargs)
-        return value
-    return wrapper
+COORD_TO_STRING = {
+        (0, 0): "·",
+        (0, -1): "↑",
+        (1, 0): "→",
+        (0, 1): "↓",
+        (-1, 0): "←"
+        }
 
 # Functions
 ###############################################################################
@@ -148,7 +123,7 @@ def calculate_score(playfield, player_nr):
 
     # Sheep must go to grass
     sheep_to_items = dict(bfs(playfield.fences.union(playfield.figures),
-                              sheep, set(playfield.items.keys())))
+                              sheep, playfield.items.keys()))
     score += sum(map(lambda a: playfield.items[a[0]] / len(a[1]), sheep_to_items.items()))
 
     # Sheep must block enemy sheep
@@ -156,88 +131,10 @@ def calculate_score(playfield, player_nr):
                                  sheep, enemy_sheep)
     score += AWARD_BLOCK_SHEEP / len(sheep_to_enemy_sheep)
 
-    # Wolf must go to enemy sheep
+    # Wolf must follow enemy sheep
     wolf_to_enemy_sheep = astar(playfield.fences.union({enemy_sheep, sheep}),
                                 wolf, enemy_sheep)
     score += AWARD_SHEEP / len(wolf_to_enemy_sheep)
-
-    return score
-
-def sheep_score(playfield, player_nr):
-    """
-    Returns score for current position of the sheep of player_nr.
-    """
-
-    sheep = playfield.get_sheep(player_nr)
-    enemy_wolf = playfield.get_wolf(player_nr % 2 + 1)
-    enemy_sheep = playfield.get_sheep(player_nr % 2 + 1)
-
-    if is_near(sheep, enemy_wolf):
-        return PENALTY_NEAR_WOLF
-
-    if not playfield.items:
-        enemy_sheep_path = astar(playfield.fences.union({enemy_sheep, sheep}), sheep, enemy_sheep)
-        return 1 / len(enemy_sheep_path) + wolf_score(playfield, player_nr)
-
-    # Score if sheep is on item
-    score = playfield.items.pop(sheep) if sheep in playfield.items else 0
-
-    # Paths
-    item_path = dict(bfs(playfield.fences.union(playfield.figures),
-                         sheep, set(playfield.items.keys())))
-    # item_path = dict(islice(bfs(playfield.fences.union(playfield.figures),
-    #                             sheep, set(playfield.items.keys())), 5))
-    # enemy_item_path = dict(bfs(playfield.fences.union(playfield.figures),
-    #                            enemy_sheep, set(playfield.items.keys())))
-    #
-    # # Scores
-    # item_scores = dict(map(lambda a: (a[0], playfield.items[a[0]] / len(a[1])),
-    #                        item_path.items()))
-    # enemy_item_scores = dict(map(lambda a: (a[0], playfield.items[a[0]] / (len(a[1]) + 1)),
-    #                              enemy_item_path.items()))
-    #
-    # return score + sum([(item_scores[k] - enemy_item_scores[k]) for k in playfield.items])
-
-    return score + sum(map(lambda a: playfield.items[a[0]] / len(a[1]), item_path.items()))
-
-def wolf_score(playfield, player_nr):
-    """
-    Returns score for current position of the wolf of player_nr.
-    """
-
-    wolf = playfield.get_wolf(player_nr)
-    sheep = playfield.get_sheep(player_nr)
-    enemy_wolf = playfield.get_wolf(player_nr % 2 + 1)
-    enemy_sheep = playfield.get_sheep(player_nr % 2 + 1)
-
-    if wolf == enemy_sheep:
-        return AWARD_SHEEP
-
-    # Paths
-    sheep_path = astar(playfield.fences.union({enemy_wolf, enemy_sheep}), wolf, sheep)
-    enemy_sheep_path = astar(playfield.fences.union({enemy_sheep, sheep}), wolf, enemy_sheep)
-
-    # Score for enemy_sheep distance
-    score = AWARD_SHEEP / len(enemy_sheep_path)
-
-    # Score if wolf is on item
-    if wolf in playfield.items:
-        score += playfield.items.pop(wolf)
-
-    if len(sheep_path) > len(enemy_sheep_path):
-        # Paths
-        item_path = dict(bfs(playfield.fences.union(playfield.figures),
-                             sheep, set(playfield.items.keys())))
-        enemy_item_path = dict(bfs(playfield.fences.union(playfield.figures),
-                                   enemy_sheep, set(playfield.items.keys())))
-
-        # Scores
-        item_scores = dict(map(lambda a: (a[0], playfield.items[a[0]] / len(a[1]) + 1),
-                               item_path.items()))
-        enemy_item_scores = dict(map(lambda a: (a[0], playfield.items[a[0]] / (len(a[1]))),
-                                     enemy_item_path.items()))
-
-        score += sum([enemy_item_scores[k] - item_scores[k] for k in playfield.items])
 
     return score
 
@@ -275,7 +172,7 @@ def simulate(playfield, player_nr, phase=None, a=-float("inf"), b=float("inf"), 
             if coord in {sheep, enemy_wolf}:
                 continue
             if coord == enemy_sheep:
-                return float("inf")
+                return AWARD_SHEEP
         else:
             if coord in playfield.figures:
                 continue
@@ -284,7 +181,7 @@ def simulate(playfield, player_nr, phase=None, a=-float("inf"), b=float("inf"), 
 
         new_playfield = playfield.move_figure(active, coord)
         eat_score = new_playfield.items.pop(coord, 0)
-        score += eat_score if phase not in {5, 6} else 0
+        score += eat_score if phase not in {5, 6} else -eat_score / 2
         score -= simulate(new_playfield, player_nr % 2 + 1, phase % 6 + 1, -b, -a, d - 1)
 
     #     if score > mscore:
@@ -340,7 +237,7 @@ def astar(obstacles, start, end):
         node = heappop(heap)
         seen.add(node.coord)
 
-        # Found end_node, return path excluding start_node
+        # Found end_node, return path
         if node == end_node:
             return [n.coord for n in gen_parents(node)][::-1]
 
@@ -371,21 +268,23 @@ def bfs(obstacles, start, end_coords):
     """
     Returns a dictionary with tuples (x, y) as keys indicating coordinates, and
     a list of tuples (x, y) as values indicating the path from the given start
-    to the key's cordinate considering the given obstacles. Mutates
-    'end_coords'.
+    to the key's cordinate considering the given obstacles.
     """
 
     seen = set([start])
     queue = deque([[start]])
+    end_coords = set(end_coords)
 
     while queue and end_coords:
         path = queue.popleft()
         current = path[-1]
 
+        # Found an objective, yield objective and path
         if current in end_coords:
             end_coords.remove(current)
             yield (current, path)
 
+        # Try each direction
         for coord in [tuple(map(add, current, i)) for i in MOVE_COORDS]:
             if not (0 <= coord[0] < FIELD_WIDTH and 0 <= coord[1] < FIELD_HEIGHT):
                 continue
@@ -480,10 +379,6 @@ class Alfunx():
         self.playfield = None
 
     def move_sheep(self, player_nr, field):
-        return self.debug_move_sheep(player_nr, field)
-
-    @debug_time
-    def debug_move_sheep(self, player_nr, field):
         playfield = Playfield(field)
 
         wolf = playfield.get_wolf(player_nr)
@@ -503,7 +398,7 @@ class Alfunx():
             score += PENALTY_MOVE_NONE
 
         print("\nplayer:", player_nr)
-        print("score:", coord, score)
+        print("score:", COORD_TO_STRING[coord], score)
 
         for move in sample(MOVE_COORDS, len(MOVE_COORDS)):
             new_coord = tuple(map(add, sheep, move))
@@ -521,20 +416,16 @@ class Alfunx():
                 new_score += PENALTY_NEAR_WOLF
             new_score -= simulate(new_playfield, player_nr % 2 + 1)
 
-            print("score:", move, new_score)
+            print("score:", COORD_TO_STRING[move], new_score)
 
             if new_score > score:
                 score = new_score
                 coord = move
 
-        print("go:   ", coord)
+        print("go:   ", COORD_TO_STRING[coord])
         return COORD_TO_MOVE_CONST[coord]
 
     def move_wolf(self, player_nr, field):
-        return self.debug_move_wolf(player_nr, field)
-
-    @debug_time
-    def debug_move_wolf(self, player_nr, field):
         playfield = Playfield(field)
 
         wolf = playfield.get_wolf(player_nr)
@@ -547,7 +438,7 @@ class Alfunx():
         score = -simulate(playfield, player_nr % 2 + 1, phase) + PENALTY_MOVE_NONE
 
         print("\nplayer:", player_nr)
-        print("score:", coord, score)
+        print("score:", COORD_TO_STRING[coord], score)
 
         for move in sample(MOVE_COORDS, len(MOVE_COORDS)):
             new_coord = tuple(map(add, wolf, move))
@@ -563,11 +454,11 @@ class Alfunx():
             new_score = new_playfield.items.pop(new_coord, 0)
             new_score -= simulate(new_playfield, player_nr % 2 + 1, phase)
 
-            print("score:", move, new_score)
+            print("score:", COORD_TO_STRING[move], new_score)
 
             if new_score > score:
                 score = new_score
                 coord = move
 
-        print("go:   ", coord)
+        print("go:   ", COORD_TO_STRING[coord])
         return COORD_TO_MOVE_CONST[coord]
