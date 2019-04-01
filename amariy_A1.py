@@ -62,12 +62,22 @@ AWARD_GRASS = 1.0
 ###############################################################################
 
 #[Awards]
-AWARD_SHEEP = 1000.0
-AWARD_BLOCK_SHEEP = 0.8
+AWARD_SHEEP = 30.0
+AWARD_BLOCK_SHEEP = 0.3
 
 #[Penalty]
-PENALTY_MOVE_NONE = -1.0
-PENALTY_NEAR_WOLF = -AWARD_SHEEP
+PENALTY_MOVE_NONE = -0.8
+PENALTY_NEAR_EDGE = -0.5
+PENALTY_NEAR_WOLF = -20.0
+
+#[Factor]
+FACTOR_ENEMY_EAT = -0.5
+
+#[Alpha-Beta]
+ALPHA = 5.0 * PENALTY_NEAR_WOLF
+BETA = 5.0 * AWARD_SHEEP
+ALPHA = -float("inf")
+BETA = float("inf")
 
 #[Movements]
 MOVE_COORDS = [(0, -1), (1, 0), (0, 1), (-1, 0)]
@@ -105,7 +115,13 @@ def gen_parents(node):
         yield node
         node = node.parent
 
-def calculate_score(playfield, player_nr):
+def add_margin(obstacles):
+    new_obstacles = list(obstacles)
+    for obstacle in obstacles:
+        new_obstacles.extend(list(map(lambda x: tuple(map(add, obstacle, x)), MOVE_COORDS)))
+    return new_obstacles
+
+def evaluate_playfield(playfield, player_nr):
     """
     Returns score for playfield.
     """
@@ -115,11 +131,23 @@ def calculate_score(playfield, player_nr):
     enemy_wolf = playfield.get_wolf(player_nr % 2 + 1)
     enemy_sheep = playfield.get_sheep(player_nr % 2 + 1)
 
+    score = 0.0
+
     # Sheep must not be near enemy wolf
     if is_near(sheep, enemy_wolf):
-        return PENALTY_NEAR_WOLF
+        score += PENALTY_NEAR_WOLF
 
-    score = 0
+    # # Sheep must not be near edges
+    # if sheep[0] == 0:
+    #     score += PENALTY_NEAR_EDGE
+    # elif sheep[0] == FIELD_WIDTH:
+    #     score += PENALTY_NEAR_EDGE
+    # if sheep[1] == 0:
+    #     score += PENALTY_NEAR_EDGE
+    # elif sheep[1] == FIELD_HEIGHT:
+    #     score += PENALTY_NEAR_EDGE
+    # if sheep in add_margin(playfield.fences):
+    #     score += PENALTY_NEAR_EDGE
 
     # Sheep must go to grass
     sheep_to_items = dict(bfs(playfield.fences.union(playfield.figures),
@@ -127,63 +155,84 @@ def calculate_score(playfield, player_nr):
     score += sum(map(lambda a: playfield.items[a[0]] / len(a[1]),
                      sheep_to_items.items()))
 
-    # Sheep must block enemy sheep
-    sheep_to_enemy_sheep = astar(playfield.fences.union({enemy_sheep, sheep}),
-                                 sheep, enemy_sheep)
-    score += AWARD_BLOCK_SHEEP / len(sheep_to_enemy_sheep)
+    # # Enemy sheep must not go to grass
+    # enemy_sheep_to_items = dict(bfs(playfield.fences.union(playfield.figures),
+    #                                 enemy_sheep, playfield.items.keys()))
+    # score += sum(map(lambda a: playfield.items[a[0]] / len(a[1]),
+    #                  enemy_sheep_to_items.items())) * FACTOR_ENEMY_EAT
 
     # Wolf must follow enemy sheep
     wolf_to_enemy_sheep = astar(playfield.fences.union({sheep, enemy_wolf}),
                                 wolf, enemy_sheep)
     score += AWARD_SHEEP / len(wolf_to_enemy_sheep)
 
+    # Sheep must block enemy sheep
+    if not playfield.items:
+        sheep_to_enemy_sheep = astar(playfield.fences.union({enemy_wolf}),
+                                     sheep, enemy_sheep)
+        score += AWARD_BLOCK_SHEEP / len(sheep_to_enemy_sheep)
+
     return score
 
 # Simulate
 ###############################################################################
 
-def simulate(playfield, player_nr, phase=None, a=-float("inf"), b=float("inf"), d=3):
+def simulate(playfield, player_nr, phase=None, a=ALPHA, b=BETA, d=1):
     if not phase:
         phase = 3 if player_nr == 1 else 4
 
     # Max depth, return score
     if not d:
-        return calculate_score(playfield, player_nr)
+        return evaluate_playfield(playfield, player_nr)
 
-    maximum = calculate_score(playfield, player_nr)
-    if b > maximum:
-        b = maximum
-        if a >= b:
-            return b
+    # maximum = evaluate_playfield(playfield, player_nr)
+    # if b > maximum:
+    #     b = maximum
+    #     if a >= b:
+    #         return b
 
-    # mscore = -float("inf")
-
+    # mscore = ALPHA
     wolf = playfield.get_wolf(player_nr)
     sheep = playfield.get_sheep(player_nr)
     enemy_wolf = playfield.get_wolf(player_nr % 2 + 1)
     enemy_sheep = playfield.get_sheep(player_nr % 2 + 1)
     active = wolf if phase in {5, 6} else sheep
 
+    # # Lost, return score
+    # if sheep == enemy_wolf:
+    #     return -float("inf")
+    #
+    # # Won, return score
+    # if wolf == enemy_sheep:
+    #     return float("inf")
+
+    # Try each direction
     for coord in [tuple(map(add, sheep, i)) for i in MOVE_COORDS]:
         if not playfield.is_coord_available(coord):
             continue
 
         score = 0.0
 
+        # Wolf phase
         if phase in {5, 6}:
             if coord in {sheep, enemy_wolf}:
                 continue
+            if coord == wolf:
+                score += PENALTY_MOVE_NONE
             if coord == enemy_sheep:
-                return AWARD_SHEEP
+                score += AWARD_SHEEP
+        # Sheep phase
         else:
-            if coord in playfield.figures:
+            if coord in {wolf, enemy_sheep, enemy_wolf}:
                 continue
+            if coord == sheep:
+                score += PENALTY_MOVE_NONE
             if is_near(coord, enemy_wolf):
                 score += PENALTY_NEAR_WOLF
 
         new_playfield = playfield.move_figure(active, coord)
-        eat_score = new_playfield.items.pop(coord, 0)
-        score += eat_score if phase not in {5, 6} else -eat_score / 2
+        eat_score = new_playfield.items.pop(coord, 0.0)
+        score += eat_score if phase not in {5, 6} else 0.0
         score -= simulate(new_playfield, player_nr % 2 + 1, phase % 6 + 1, -b, -a, d - 1)
 
     #     if score > mscore:
@@ -347,9 +396,8 @@ class Playfield:
         Simulate figure movement, return copy of playfield.
         """
         playfield = deepcopy(self)
-        playfield.figures[playfield.figures.index(figure)] = coord
+        playfield.figures[self.figures.index(figure)] = coord
         return playfield
-
 
     def simulate_sheep(self, player_nr, coord):
         """
@@ -388,40 +436,36 @@ class Alfunx():
         enemy_sheep = playfield.get_sheep(player_nr % 2 + 1)
 
         # Score if sheep stays
-        coord = (0, 0)
-        score = PENALTY_NEAR_WOLF if is_near(sheep, enemy_wolf) else 0.0
-        score -= simulate(playfield, player_nr % 2 + 1)
+        best_move = (0, 0)
+        best_score = PENALTY_NEAR_WOLF if is_near(sheep, enemy_wolf) else 0.0
+        best_score -= simulate(playfield, player_nr % 2 + 1)
         if playfield.items:
-            score += PENALTY_MOVE_NONE
+            best_score += PENALTY_MOVE_NONE
 
         print("\nplayer:", player_nr)
-        print("score:", COORD_TO_STRING[coord], "{0:.2f}".format(score))
+        print("score:", COORD_TO_STRING[best_move], "{0:.2f}".format(best_score))
 
         # Try each direction
         for move in sample(MOVE_COORDS, len(MOVE_COORDS)):
-            new_coord = tuple(map(add, sheep, move))
+            coord = tuple(map(add, sheep, move))
 
-            if not playfield.is_coord_available(new_coord):
+            if not playfield.is_coord_available(coord):
                 continue
-            if new_coord in playfield.figures:
-                continue
-            if is_near(new_coord, enemy_wolf):
+            if coord in playfield.figures:
                 continue
 
-            new_playfield = playfield.move_figure(sheep, new_coord)
-            new_score = new_playfield.items.pop(new_coord, 0.0)
-            if is_near(new_coord, enemy_wolf):
-                new_score += PENALTY_NEAR_WOLF
-            new_score -= simulate(new_playfield, player_nr % 2 + 1)
+            new_playfield = playfield.move_figure(sheep, coord)
+            score = new_playfield.items.pop(coord, 0.0)
+            score -= simulate(new_playfield, player_nr % 2 + 1)
 
-            print("score:", COORD_TO_STRING[move], "{0:.2f}".format(new_score))
+            print("score:", COORD_TO_STRING[move], "{0:.2f}".format(score))
 
-            if new_score > score:
-                score = new_score
-                coord = move
+            if score > best_score:
+                best_score = score
+                best_move = move
 
-        print("go:   ", COORD_TO_STRING[coord])
-        return COORD_TO_MOVE_CONST[coord]
+        print("go:   ", COORD_TO_STRING[best_move])
+        return COORD_TO_MOVE_CONST[best_move]
 
     def move_wolf(self, player_nr, field):
         playfield = Playfield(field)
@@ -431,33 +475,33 @@ class Alfunx():
         enemy_sheep = playfield.get_sheep(player_nr % 2 + 1)
 
         # Score if wolf stays
-        coord = (0, 0)
+        best_move = (0, 0)
         phase = 6 if player_nr == 1 else 1
-        score = -simulate(playfield, player_nr % 2 + 1, phase) + PENALTY_MOVE_NONE
+        best_score = -simulate(playfield, player_nr % 2 + 1, phase) + PENALTY_MOVE_NONE
 
         print("\nplayer:", player_nr)
-        print("score:", COORD_TO_STRING[coord], "{0:.2f}".format(score))
+        print("score:", COORD_TO_STRING[best_move], "{0:.2f}".format(best_score))
 
         # Try each direction
         for move in sample(MOVE_COORDS, len(MOVE_COORDS)):
-            new_coord = tuple(map(add, wolf, move))
+            coord = tuple(map(add, wolf, move))
 
-            if not playfield.is_coord_available(new_coord):
+            if not playfield.is_coord_available(coord):
                 continue
-            if new_coord in {sheep, enemy_wolf}:
+            if coord in {sheep, enemy_wolf}:
                 continue
-            if new_coord == enemy_sheep:
+            if coord == enemy_sheep:
                 return COORD_TO_MOVE_CONST[move]
 
-            new_playfield = playfield.move_figure(wolf, new_coord)
-            new_score = new_playfield.items.pop(new_coord, 0.0)
-            new_score -= simulate(new_playfield, player_nr % 2 + 1, phase)
+            new_playfield = playfield.move_figure(wolf, coord)
+            new_playfield.items.pop(coord, 0.0)
+            score = -simulate(new_playfield, player_nr % 2 + 1, phase)
 
-            print("score:", COORD_TO_STRING[move], "{0:.2f}".format(new_score))
+            print("score:", COORD_TO_STRING[move], "{0:.2f}".format(score))
 
-            if new_score > score:
-                score = new_score
-                coord = move
+            if score > best_score:
+                best_score = score
+                best_move = move
 
-        print("go:   ", COORD_TO_STRING[coord])
-        return COORD_TO_MOVE_CONST[coord]
+        print("go:   ", COORD_TO_STRING[best_move])
+        return COORD_TO_MOVE_CONST[best_move]
