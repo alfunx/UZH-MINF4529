@@ -124,7 +124,8 @@ def calculate_score(playfield, player_nr):
     # Sheep must go to grass
     sheep_to_items = dict(bfs(playfield.fences.union(playfield.figures),
                               sheep, playfield.items.keys()))
-    score += sum(map(lambda a: playfield.items[a[0]] / len(a[1]), sheep_to_items.items()))
+    score += sum(map(lambda a: playfield.items[a[0]] / len(a[1]),
+                     sheep_to_items.items()))
 
     # Sheep must block enemy sheep
     sheep_to_enemy_sheep = astar(playfield.fences.union({enemy_sheep, sheep}),
@@ -132,7 +133,7 @@ def calculate_score(playfield, player_nr):
     score += AWARD_BLOCK_SHEEP / len(sheep_to_enemy_sheep)
 
     # Wolf must follow enemy sheep
-    wolf_to_enemy_sheep = astar(playfield.fences.union({enemy_sheep, sheep}),
+    wolf_to_enemy_sheep = astar(playfield.fences.union({sheep, enemy_wolf}),
                                 wolf, enemy_sheep)
     score += AWARD_SHEEP / len(wolf_to_enemy_sheep)
 
@@ -145,6 +146,7 @@ def simulate(playfield, player_nr, phase=None, a=-float("inf"), b=float("inf"), 
     if not phase:
         phase = 3 if player_nr == 1 else 4
 
+    # Max depth, return score
     if not d:
         return calculate_score(playfield, player_nr)
 
@@ -166,7 +168,7 @@ def simulate(playfield, player_nr, phase=None, a=-float("inf"), b=float("inf"), 
         if not playfield.is_coord_available(coord):
             continue
 
-        score = 0
+        score = 0.0
 
         if phase in {5, 6}:
             if coord in {sheep, enemy_wolf}:
@@ -380,26 +382,22 @@ class Alfunx():
 
     def move_sheep(self, player_nr, field):
         playfield = Playfield(field)
-
         wolf = playfield.get_wolf(player_nr)
         sheep = playfield.get_sheep(player_nr)
         enemy_wolf = playfield.get_wolf(player_nr % 2 + 1)
         enemy_sheep = playfield.get_sheep(player_nr % 2 + 1)
 
+        # Score if sheep stays
         coord = (0, 0)
-        score = 0.0
-
-        if is_near(sheep, enemy_wolf):
-            score += -float("inf")
-        else:
-            score += -simulate(playfield, player_nr % 2 + 1)
-
+        score = PENALTY_NEAR_WOLF if is_near(sheep, enemy_wolf) else 0.0
+        score -= simulate(playfield, player_nr % 2 + 1)
         if playfield.items:
             score += PENALTY_MOVE_NONE
 
         print("\nplayer:", player_nr)
-        print("score:", COORD_TO_STRING[coord], score)
+        print("score:", COORD_TO_STRING[coord], "{0:.2f}".format(score))
 
+        # Try each direction
         for move in sample(MOVE_COORDS, len(MOVE_COORDS)):
             new_coord = tuple(map(add, sheep, move))
 
@@ -411,12 +409,12 @@ class Alfunx():
                 continue
 
             new_playfield = playfield.move_figure(sheep, new_coord)
-            new_score = new_playfield.items.pop(new_coord, 0)
+            new_score = new_playfield.items.pop(new_coord, 0.0)
             if is_near(new_coord, enemy_wolf):
                 new_score += PENALTY_NEAR_WOLF
             new_score -= simulate(new_playfield, player_nr % 2 + 1)
 
-            print("score:", COORD_TO_STRING[move], new_score)
+            print("score:", COORD_TO_STRING[move], "{0:.2f}".format(new_score))
 
             if new_score > score:
                 score = new_score
@@ -427,19 +425,20 @@ class Alfunx():
 
     def move_wolf(self, player_nr, field):
         playfield = Playfield(field)
-
         wolf = playfield.get_wolf(player_nr)
         sheep = playfield.get_sheep(player_nr)
         enemy_wolf = playfield.get_wolf(player_nr % 2 + 1)
         enemy_sheep = playfield.get_sheep(player_nr % 2 + 1)
 
+        # Score if wolf stays
         coord = (0, 0)
         phase = 6 if player_nr == 1 else 1
         score = -simulate(playfield, player_nr % 2 + 1, phase) + PENALTY_MOVE_NONE
 
         print("\nplayer:", player_nr)
-        print("score:", COORD_TO_STRING[coord], score)
+        print("score:", COORD_TO_STRING[coord], "{0:.2f}".format(score))
 
+        # Try each direction
         for move in sample(MOVE_COORDS, len(MOVE_COORDS)):
             new_coord = tuple(map(add, wolf, move))
 
@@ -451,10 +450,10 @@ class Alfunx():
                 return COORD_TO_MOVE_CONST[move]
 
             new_playfield = playfield.move_figure(wolf, new_coord)
-            new_score = new_playfield.items.pop(new_coord, 0)
+            new_score = new_playfield.items.pop(new_coord, 0.0)
             new_score -= simulate(new_playfield, player_nr % 2 + 1, phase)
 
-            print("score:", COORD_TO_STRING[move], new_score)
+            print("score:", COORD_TO_STRING[move], "{0:.2f}".format(new_score))
 
             if new_score > score:
                 score = new_score
