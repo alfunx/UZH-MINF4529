@@ -62,25 +62,28 @@ AWARD_GRASS = 1.0
 ###############################################################################
 
 #[Awards]
-AWARD_SHEEP = 30.0
-AWARD_BLOCK_SHEEP = 0.3
+AWARD_SHEEP = 10.0
+AWARD_BLOCK_SHEEP = 0.1
 
 #[Penalty]
-PENALTY_MOVE_NONE = -0.8
-PENALTY_NEAR_EDGE = -0.5
-PENALTY_NEAR_WOLF = -20.0
+PENALTY_MOVE_NONE = -1.5
+PENALTY_NEAR_EDGE = -20.0
+PENALTY_NEAR_WOLF = -7.0
+PENALTY_STUCK = -0.9
 
 #[Factor]
 FACTOR_ENEMY_EAT = -0.5
+FACTOR_EAT = 5.0
 
 #[Alpha-Beta]
 ALPHA = 5.0 * PENALTY_NEAR_WOLF
 BETA = 5.0 * AWARD_SHEEP
-ALPHA = -float("inf")
+ALPHA = float("-inf")
 BETA = float("inf")
 
 #[Movements]
 MOVE_COORDS = [(0, -1), (1, 0), (0, 1), (-1, 0)]
+MOVE_OR_STAY_COORDS = [(0, 0), (0, -1), (1, 0), (0, 1), (-1, 0)]
 COORD_TO_MOVE_CONST = {
         (0, 0): MOVE_NONE,
         (0, -1): MOVE_UP,
@@ -103,10 +106,13 @@ def get_class_name():
     return 'Alfunx'
 
 def is_near(a, b):
-    return a in [b] + list(map(lambda x: tuple(map(add, b, x)), MOVE_COORDS))
+    return a in [tuple(map(add, b, i)) for i in MOVE_OR_STAY_COORDS]
 
 def distance(a, b):
     return (a - b) ** 2
+
+def shuffle(a):
+    return sample(a, len(a))
 
 def gen_parents(node):
     yield node
@@ -115,11 +121,20 @@ def gen_parents(node):
         yield node
         node = node.parent
 
-def add_margin(obstacles):
-    new_obstacles = list(obstacles)
-    for obstacle in obstacles:
-        new_obstacles.extend(list(map(lambda x: tuple(map(add, obstacle, x)), MOVE_COORDS)))
-    return new_obstacles
+def add_margin(coords):
+    new_coords = list(coords)
+    for c in coords:
+        new_coords.extend([tuple(map(add, c, i)) for i in MOVE_COORDS])
+    return new_coords
+
+def possible_moves(obstacles, start, wolf=None):
+    moves = 0
+    for coord in [tuple(map(add, start, i)) for i in MOVE_COORDS]:
+        if 0 <= coord[0] < FIELD_WIDTH and 0 <= coord[1] < FIELD_HEIGHT \
+                and coord not in obstacles \
+                and (not is_near(coord, wolf) if wolf else True):
+            moves += 1
+    return moves
 
 def evaluate_playfield(playfield, player_nr):
     """
@@ -137,40 +152,37 @@ def evaluate_playfield(playfield, player_nr):
     if is_near(sheep, enemy_wolf):
         score += PENALTY_NEAR_WOLF
 
-    # # Sheep must not be near edges
-    # if sheep[0] == 0:
-    #     score += PENALTY_NEAR_EDGE
-    # elif sheep[0] == FIELD_WIDTH:
-    #     score += PENALTY_NEAR_EDGE
-    # if sheep[1] == 0:
-    #     score += PENALTY_NEAR_EDGE
-    # elif sheep[1] == FIELD_HEIGHT:
-    #     score += PENALTY_NEAR_EDGE
-    # if sheep in add_margin(playfield.fences):
-    #     score += PENALTY_NEAR_EDGE
+    # Sheep must be able to escape
+    moves = possible_moves(playfield.fences.union(playfield.figures),
+                           sheep, enemy_wolf)
+    if moves < 2:
+        score += PENALTY_NEAR_EDGE / (moves + 1)
 
-    # Sheep must go to grass
-    sheep_to_items = dict(bfs(playfield.fences.union(playfield.figures),
-                              sheep, playfield.items.keys()))
-    score += sum(map(lambda a: playfield.items[a[0]] / len(a[1]),
-                     sheep_to_items.items()))
+    if playfield.items:
+        # Sheep must go to grass
+        sheep_to_items = dict(bfs(playfield.fences.union(playfield.figures),
+                                  sheep, playfield.items.keys()))
+        score += sum(map(lambda a: playfield.items[a[0]] / len(a[1]),
+                         sheep_to_items.items()))
 
-    # # Enemy sheep must not go to grass
-    # enemy_sheep_to_items = dict(bfs(playfield.fences.union(playfield.figures),
-    #                                 enemy_sheep, playfield.items.keys()))
-    # score += sum(map(lambda a: playfield.items[a[0]] / len(a[1]),
-    #                  enemy_sheep_to_items.items())) * FACTOR_ENEMY_EAT
+        # Enemy sheep must not go to grass
+        enemy_sheep_to_items = dict(bfs(playfield.fences.union(playfield.figures),
+                                        enemy_sheep, playfield.items.keys()))
+        score += sum(map(lambda a: playfield.items[a[0]] / len(a[1]),
+                         enemy_sheep_to_items.items())) * FACTOR_ENEMY_EAT
+
+    else:
+        # Sheep must block enemy sheep
+        sheep_to_enemy_sheep = astar(playfield.fences.union({enemy_wolf}),
+                                     sheep, enemy_sheep)
+        if sheep_to_enemy_sheep:
+            score += AWARD_BLOCK_SHEEP / len(sheep_to_enemy_sheep)
 
     # Wolf must follow enemy sheep
     wolf_to_enemy_sheep = astar(playfield.fences.union({sheep, enemy_wolf}),
                                 wolf, enemy_sheep)
-    score += AWARD_SHEEP / len(wolf_to_enemy_sheep)
-
-    # Sheep must block enemy sheep
-    if not playfield.items:
-        sheep_to_enemy_sheep = astar(playfield.fences.union({enemy_wolf}),
-                                     sheep, enemy_sheep)
-        score += AWARD_BLOCK_SHEEP / len(sheep_to_enemy_sheep)
+    if wolf_to_enemy_sheep:
+        score += AWARD_SHEEP / len(wolf_to_enemy_sheep)
 
     return score
 
@@ -179,7 +191,7 @@ def evaluate_playfield(playfield, player_nr):
 
 def simulate(playfield, player_nr, phase=None, a=ALPHA, b=BETA, d=1):
     if not phase:
-        phase = 3 if player_nr == 1 else 4
+        phase = 4 if player_nr == 1 else 5
 
     # Max depth, return score
     if not d:
@@ -191,23 +203,14 @@ def simulate(playfield, player_nr, phase=None, a=ALPHA, b=BETA, d=1):
     #     if a >= b:
     #         return b
 
-    # mscore = ALPHA
     wolf = playfield.get_wolf(player_nr)
     sheep = playfield.get_sheep(player_nr)
     enemy_wolf = playfield.get_wolf(player_nr % 2 + 1)
     enemy_sheep = playfield.get_sheep(player_nr % 2 + 1)
     active = wolf if phase in {5, 6} else sheep
 
-    # # Lost, return score
-    # if sheep == enemy_wolf:
-    #     return -float("inf")
-    #
-    # # Won, return score
-    # if wolf == enemy_sheep:
-    #     return float("inf")
-
     # Try each direction
-    for coord in [tuple(map(add, sheep, i)) for i in MOVE_COORDS]:
+    for coord in shuffle([tuple(map(add, active, i)) for i in MOVE_OR_STAY_COORDS]):
         if not playfield.is_coord_available(coord):
             continue
 
@@ -219,26 +222,20 @@ def simulate(playfield, player_nr, phase=None, a=ALPHA, b=BETA, d=1):
                 continue
             if coord == wolf:
                 score += PENALTY_MOVE_NONE
-            if coord == enemy_sheep:
-                score += AWARD_SHEEP
         # Sheep phase
         else:
             if coord in {wolf, enemy_sheep, enemy_wolf}:
                 continue
             if coord == sheep:
                 score += PENALTY_MOVE_NONE
-            if is_near(coord, enemy_wolf):
-                score += PENALTY_NEAR_WOLF
 
-        new_playfield = playfield.move_figure(active, coord)
-        eat_score = new_playfield.items.pop(coord, 0.0)
-        score += eat_score if phase not in {5, 6} else 0.0
-        score -= simulate(new_playfield, player_nr % 2 + 1, phase % 6 + 1, -b, -a, d - 1)
-
-    #     if score > mscore:
-    #         mscore = score
-    #
-    # return mscore
+        if phase in {5, 6} and coord == enemy_sheep:
+            score += AWARD_SHEEP
+        else:
+            new_playfield = playfield.move_figure(active, coord)
+            eat_score = new_playfield.items.pop(coord, 0.0)
+            score += eat_score * FACTOR_EAT if phase not in {5, 6} else 0.0
+            score -= simulate(new_playfield, player_nr % 2 + 1, phase % 6 + 1, -b, -a, d - 1)
 
         if score >= b:
             return score
@@ -259,7 +256,6 @@ class Node():
         self.parent = parent
         self.coord = coord
         self.g = parent.g + 1 if parent else 0
-        self.h = 0
         self.f = 0
 
     def __eq__(self, other):
@@ -280,7 +276,6 @@ def astar(obstacles, start, end):
         obstacles.remove(end)
 
     start_node = Node(None, start)
-    end_node = Node(None, end)
     heap = [start_node]
     seen = set()
 
@@ -288,8 +283,8 @@ def astar(obstacles, start, end):
         node = heappop(heap)
         seen.add(node.coord)
 
-        # Found end_node, return path
-        if node == end_node:
+        # Found end, return path
+        if node.coord == end:
             return [n.coord for n in gen_parents(node)][::-1]
 
         # Try each direction
@@ -304,12 +299,14 @@ def astar(obstacles, start, end):
 
             # Node is already in heap
             for open_node in heap:
-                if new_node == open_node and new_node.g > open_node.g:
+                if new_node == open_node:
+                    if new_node.g < open_node.g:
+                        open_node.g = new_node.g
+                        open_node.f = new_node.g + sum(map(distance, new_node.coord, end))
                     break
             # Node is not yet in heap
             else:
-                new_node.h = sum(map(distance, new_node.coord, end_node.coord))
-                new_node.f = new_node.g + new_node.h
+                new_node.f = new_node.g + sum(map(distance, new_node.coord, end))
                 heappush(heap, new_node)
 
 # Breadth First Search (BFS) algorithm
@@ -426,7 +423,6 @@ class Alfunx():
     def __init__(self):
         self.name = "alfunx"
         self.uzh_shortname = "amariy"
-        self.playfield = None
 
     def move_sheep(self, player_nr, field):
         playfield = Playfield(field)
@@ -437,16 +433,25 @@ class Alfunx():
 
         # Score if sheep stays
         best_move = (0, 0)
-        best_score = PENALTY_NEAR_WOLF if is_near(sheep, enemy_wolf) else 0.0
-        best_score -= simulate(playfield, player_nr % 2 + 1)
-        if playfield.items:
-            best_score += PENALTY_MOVE_NONE
+        best_score = PENALTY_MOVE_NONE
+        best_score -= simulate(playfield, player_nr % 2 + 1, 4 if player_nr == 1 else 5) * 0.5
+        best_score -= simulate(playfield, player_nr % 2 + 1, 2 if player_nr == 1 else 3) * 0.5
+
+        # Sheep must not be near wolf
+        if is_near(sheep, enemy_wolf):
+            best_score += PENALTY_NEAR_WOLF
+
+        # Sheep must be able to escape
+        moves = possible_moves(playfield.fences.union(playfield.figures),
+                               sheep, enemy_wolf)
+        if moves < 2:
+            best_score += PENALTY_NEAR_EDGE / (moves + 1)
 
         print("\nplayer:", player_nr)
         print("score:", COORD_TO_STRING[best_move], "{0:.2f}".format(best_score))
 
         # Try each direction
-        for move in sample(MOVE_COORDS, len(MOVE_COORDS)):
+        for move in shuffle(MOVE_COORDS):
             coord = tuple(map(add, sheep, move))
 
             if not playfield.is_coord_available(coord):
@@ -455,8 +460,20 @@ class Alfunx():
                 continue
 
             new_playfield = playfield.move_figure(sheep, coord)
-            score = new_playfield.items.pop(coord, 0.0)
-            score -= simulate(new_playfield, player_nr % 2 + 1)
+            score = new_playfield.items.pop(coord, 0.0) * FACTOR_EAT
+
+            score -= simulate(new_playfield, player_nr % 2 + 1, 4 if player_nr == 1 else 5) * 0.5
+            score -= simulate(new_playfield, player_nr % 2 + 1, 2 if player_nr == 1 else 3) * 0.5
+
+            # Sheep must not be near wolf
+            if is_near(coord, enemy_wolf):
+                score += PENALTY_NEAR_WOLF
+
+            # Sheep must be able to escape
+            moves = possible_moves(new_playfield.fences.union(new_playfield.figures),
+                                   coord, enemy_wolf)
+            if moves < 2:
+                score += PENALTY_NEAR_EDGE / (moves + 1)
 
             print("score:", COORD_TO_STRING[move], "{0:.2f}".format(score))
 
@@ -479,11 +496,23 @@ class Alfunx():
         phase = 6 if player_nr == 1 else 1
         best_score = -simulate(playfield, player_nr % 2 + 1, phase) + PENALTY_MOVE_NONE
 
+        # Wolf must follow enemy sheep
+        wolf_to_enemy_sheep = astar(playfield.fences.union({sheep, enemy_wolf}),
+                                    wolf, enemy_sheep)
+        if wolf_to_enemy_sheep:
+            best_score += AWARD_SHEEP / len(wolf_to_enemy_sheep)
+
+        # Enemy sheep must not go to grass
+        enemy_sheep_to_items = dict(bfs(playfield.fences.union(playfield.figures),
+                                        enemy_sheep, playfield.items.keys()))
+        best_score += sum(map(lambda a: playfield.items[a[0]] / len(a[1]),
+                              enemy_sheep_to_items.items())) * FACTOR_ENEMY_EAT
+
         print("\nplayer:", player_nr)
         print("score:", COORD_TO_STRING[best_move], "{0:.2f}".format(best_score))
 
         # Try each direction
-        for move in sample(MOVE_COORDS, len(MOVE_COORDS)):
+        for move in shuffle(MOVE_COORDS):
             coord = tuple(map(add, wolf, move))
 
             if not playfield.is_coord_available(coord):
@@ -496,6 +525,18 @@ class Alfunx():
             new_playfield = playfield.move_figure(wolf, coord)
             new_playfield.items.pop(coord, 0.0)
             score = -simulate(new_playfield, player_nr % 2 + 1, phase)
+
+            # Wolf must follow enemy sheep
+            wolf_to_enemy_sheep = astar(new_playfield.fences.union({sheep, enemy_wolf}),
+                                        coord, enemy_sheep)
+            if wolf_to_enemy_sheep:
+                score += AWARD_SHEEP / len(wolf_to_enemy_sheep)
+
+            # Enemy sheep must not go to grass
+            enemy_sheep_to_items = dict(bfs(new_playfield.fences.union(new_playfield.figures),
+                                            enemy_sheep, new_playfield.items.keys()))
+            score += sum(map(lambda a: new_playfield.items[a[0]] / len(a[1]),
+                             enemy_sheep_to_items.items())) * FACTOR_ENEMY_EAT
 
             print("score:", COORD_TO_STRING[move], "{0:.2f}".format(score))
 
