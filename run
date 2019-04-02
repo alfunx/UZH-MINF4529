@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+
+opts=(
+    # -m pdb
+)
+
+game_opts=(
+    'resources/test.map'
+    -d
+)
+
+# python "${opts[@]}" kingsheep.py \
+#     "${game_opts[@]}" \
+#     -p1m random_player \
+#     -p1n RandomPlayer \
+#     -p2m greedy_player \
+#     -p2n GreedyPlayer
+
+# python "${opts[@]}" kingsheep.py \
+#     "${game_opts[@]}" \
+#     -p1m amariy_A1 \
+#     -p1n Alfunx \
+#     -p2m greedy_player \
+#     -p2n GreedyPlayer
+
+# python "${opts[@]}" kingsheep.py \
+#     "${game_opts[@]}" \
+#     -p1m greedy_player \
+#     -p1n GreedyPlayer \
+#     -p2m amariy_A1 \
+#     -p2n Alfunx
+
+# python "${opts[@]}" kingsheep.py \
+#     "${game_opts[@]}" \
+#     -p1m amariy_A1 \
+#     -p1n Alfunx \
+#     -p2m amariy_A1 \
+#     -p2n Alfunx
+
+python "${opts[@]}" kingsheep.py \
+    "${game_opts[@]}" \
+    -p1m old \
+    -p1n Old \
+    -p2m amariy_A1 \
+    -p2n Alfunx
+
+# python "${opts[@]}" kingsheep.py \
+#     "${game_opts[@]}" \
+#     -p1m amariy_A1 \
+#     -p1n Alfunx \
+#     -p2m old \
+#     -p2n Old
+
+# python "${opts[@]}" kingsheep.py \
+#     "${game_opts[@]}" \
+#     -p1m amariy_A1 \
+#     -p1n Alfunx \
+#     -p2m joabau_A1 \
+#     -p2n Joe
+
+# python "${opts[@]}" kingsheep.py \
+#     "${game_opts[@]}" \
+#     -p1m joabau_A1 \
+#     -p1n Joe \
+#     -p2m amariy_A1 \
+#     -p2n Alfunx
