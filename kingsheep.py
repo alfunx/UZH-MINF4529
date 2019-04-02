@@ -157,7 +157,7 @@ class KsField:
                     if target_figure == CELL_WOLF_2:    
                         self.field[x_old][y_old] = CELL_SHEEP_1_d
                         self.score2 += self.score1
-                        self.score1 = 0 
+                        self.score1 = -1 
                         return True,'sheep1 suicide'
                     else:
                         self.score1 += self.award(target_figure)
@@ -166,7 +166,7 @@ class KsField:
                     if target_figure == CELL_WOLF_1:    
                         self.field[x_old][y_old] = CELL_SHEEP_2_d
                         self.score1 += self.score2
-                        self.score2 = 0 
+                        self.score2 = -1 
                         return True, 'sheep2 suicide'
                     else:
                         self.score2 += self.award(target_figure)
@@ -177,15 +177,15 @@ class KsField:
                     if target_figure == CELL_SHEEP_2:   
                         self.field[x_new][y_new] = CELL_SHEEP_2_d
                         self.score1 += self.score2
-                        self.score2 = 0 
-                        return True, 'sheep1 eaten'
+                        self.score2 = -1 
+                        return True, 'sheep2 eaten'
 
                 elif figure == CELL_WOLF_2:
                     if target_figure == CELL_SHEEP_1:   
                         self.field[x_new][y_new] = CELL_SHEEP_1_d
                         self.score2 += self.score1
-                        self.score1 = 0 
-                        return True, 'sheep2 eaten'
+                        self.score1 = -1 
+                        return True, 'sheep1 eaten'
 
                 # actual figure move
                 self.field[x_new][y_new] = figure
@@ -226,24 +226,25 @@ def kingsheep_iteration(i, ks, player1, player2,reason):
     p1.terminate()
     p1.join()
     
-    #sheep2 move
-    p2 = Pool()
-    r2 = p2.apply_async(player2.move_sheep,(2,ks.get_field()))
-    try:
-        if ks.name2 == 'Keyboard Player':
-            move2 = player2.move_sheep()
-        else:
-            move2 = r2.get(MAX_CALC_TIME)
-        result2_game_over,result2_reason = ks.move(CELL_SHEEP_2, move2,reason)
-        if result2_reason != '':
-            reason = result2_reason
-        game_over = game_over or result2_game_over
-    except TimeoutError:
-        game_over = True
-        reason = 'timeout2'
-    p2.close()
-    p2.terminate()
-    p2.join() 
+    if not game_over:
+        #sheep2 move
+        p2 = Pool()
+        r2 = p2.apply_async(player2.move_sheep,(2,ks.get_field()))
+        try:
+            if ks.name2 == 'Keyboard Player':
+                move2 = player2.move_sheep()
+            else:
+                move2 = r2.get(MAX_CALC_TIME)
+            result2_game_over,result2_reason = ks.move(CELL_SHEEP_2, move2,reason)
+            if result2_reason != '':
+                reason = result2_reason
+            game_over = game_over or result2_game_over
+        except TimeoutError:
+            game_over = True
+            reason = 'timeout2'
+        p2.close()
+        p2.terminate()
+        p2.join() 
    
     if i % 2 == 0 and not game_over:
         #wolf1 move
@@ -265,6 +266,7 @@ def kingsheep_iteration(i, ks, player1, player2,reason):
         p3.terminate()
         p3.join()
         
+    if i % 2 == 0 and not game_over:    
         #wolf2 move
         p4 = Pool()
         r4 = p4.apply_async(player2.move_wolf,(2,ks.get_field()))
@@ -329,6 +331,7 @@ def kingsheep_play(player1class, player2class, map_name):
 
             iterations_run += 1
             if game_over:
+                print("\n >>> GAME OVER! ###", reason, "\n")
                 break
 
     #   --- END GAME ---
@@ -336,16 +339,28 @@ def kingsheep_play(player1class, player2class, map_name):
     elapsed_time = time.perf_counter() - start_time
 
 
-
+    #if it's a tie, the points are distributed equally
     if ks.score1 == ks.score2:
         ks.grading1 = 0.5
         ks.grading2 = 0.5
     elif ks.score1 > ks.score2:
-        ks.grading1 = 0.1 + round((0.9*ks.score1/(ks.score1+ks.score2)),3)
-        ks.grading2 = 0 + round((0.9*ks.score2/(ks.score1+ks.score2)),3)
+        #if sheep 2 was eaten, player 1 gets all the points
+        if ks.score2 == -1:
+            ks.grading1 = 1
+            ks.grading2 = 0
+        # else the winner gets 0.1, 0.9 is distributed based on points gathered
+        else: 
+            ks.grading1 = 0.1 + round((0.9*ks.score1/(ks.score1+ks.score2)),3)
+            ks.grading2 = 0 + round((0.9*ks.score2/(ks.score1+ks.score2)),3)
     else:
-        ks.grading1 = 0 + round((0.9*ks.score1/(ks.score1+ks.score2)),3)
-        ks.grading2 = 0.1 + round((0.9*ks.score2/(ks.score1+ks.score2)),3)
+        #if sheep 1 was eaten, player 1 gets all the points
+        if ks.score1 == -1:
+            ks.grading1 = 0
+            ks.grading2 = 1
+        # else the winner gets 0.1, 0.9 is distributed based on points gathered
+        else:
+            ks.grading1 = 0 + round((0.9*ks.score1/(ks.score1+ks.score2)),3)
+            ks.grading2 = 0.1 + round((0.9*ks.score2/(ks.score1+ks.score2)),3)
 
     print('Player one got ' + str(round(ks.grading1,2)) + ' points, Player two got ' + str(round(ks.grading2,2)) + ' points')
 

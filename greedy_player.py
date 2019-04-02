@@ -218,7 +218,7 @@ class GreedyPlayer():
                     return MOVE_RIGHT
             else: #it's to the right, move left if possible
                 if self.valid_move(sheep,sheep_position[0],sheep_position[1]+1, field):
-                    return MOVE_RIGHT
+                    return MOVE_LEFT
             #if this is not possible, flee up or down
             if self.valid_move(sheep,sheep_position[0]-1,sheep_position[1], field):
                 return MOVE_UP
