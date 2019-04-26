@@ -34,7 +34,7 @@ class KingsheepWindow(arcade.Window):
 
 
     def __init__(self, width, height, name, iterations,
-                 field_width, field_height, ks, player1, player2,reason):
+                 field_width, field_height, ks, player1, player2,reason,player1_sheep,player1_wolf,player2_sheep,player2_wolf):
         super().__init__(width, height, name)
 
         # Set the working directory (where we expect to find files) to the same
@@ -53,6 +53,10 @@ class KingsheepWindow(arcade.Window):
         self.field_height = field_height
         self.last_key = -1
         self.reason = reason
+        self.player1_sheep = player1_sheep
+        self.player1_wolf = player1_wolf
+        self.player2_sheep = player2_sheep
+        self.player2_wolf = player2_wolf
 
         self.sprites = None
         self.grass = []
@@ -175,7 +179,7 @@ class KingsheepWindow(arcade.Window):
         """
         self.iteration += 1
 
-        game_over,reason = kingsheep_iteration(self.iteration, self.ks, self.player1, self.player2,self.reason)
+        game_over,reason = kingsheep_iteration(self.iteration, self.ks, self.player1, self.player2,self.reason,self.player1_sheep,self.player1_wolf,self.player2_sheep,self.player2_wolf)
 
         if debug:
             self.ks.print_ks()
@@ -223,7 +227,7 @@ debug = False
 verbosity = 5
 slowdown = 0.0
 
-def init(iterations, field_width, field_height, ks, player1, player2, debug_level, verbosity_level, slowdown_level):
+def init(iterations, field_width, field_height, ks, player1, player2, debug_level, verbosity_level, slowdown_level,player1_sheep,player1_wolf,player2_sheep,player2_wolf):
     global debug
     global verbosity
     global slowdown
@@ -233,7 +237,8 @@ def init(iterations, field_width, field_height, ks, player1, player2, debug_leve
     reason = ''
 
     game = KingsheepWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Kingsheep", iterations,
-                           field_width, field_height, ks, player1, player2,reason)
+                           field_width, field_height, ks, player1, player2,reason,player1_sheep,player1_wolf,player2_sheep
+                           ,player2_wolf)
     game.setup()
 
     # run game until someone closes it

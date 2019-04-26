@@ -202,19 +202,19 @@ class KsField:
 
 #   --- GAME PLAY ---   ----------------------------
 
-def kingsheep_iteration(i, ks, player1, player2,reason):
+def kingsheep_iteration(i, ks, player1, player2,reason,player1_sheep,player1_wolf,player2_sheep,player2_wolf):
     game_over = False
 
     #each move is placed in a pool to limit the think time the agent gets
 
     #sheep1 move
     p1 = Pool()
-    r1 = p1.apply_async(player1.move_sheep,(1,ks.get_field()))
+    if player1.name == 'Random Player':
+        r1 = p1.apply_async(player1.move_sheep,(1,ks.get_field()))
+    else:
+        r1 = p1.apply_async(player1.move_sheep,(1,ks.get_field(),player1_sheep))
     try:
-        if ks.name1 == 'Keyboard Player':
-            move1 = player1.move_sheep()
-        else:
-            move1 = r1.get(MAX_CALC_TIME)
+        move1 = r1.get(MAX_CALC_TIME)
         result1_game_over,result1_reason = ks.move(CELL_SHEEP_1, move1,reason)
         if result1_reason != '':
             reason = result1_reason
@@ -226,35 +226,34 @@ def kingsheep_iteration(i, ks, player1, player2,reason):
     p1.terminate()
     p1.join()
     
-    if not game_over:
-        #sheep2 move
-        p2 = Pool()
+    #sheep2 move
+    p2 = Pool()
+    if player2.name == 'Random Player':
         r2 = p2.apply_async(player2.move_sheep,(2,ks.get_field()))
-        try:
-            if ks.name2 == 'Keyboard Player':
-                move2 = player2.move_sheep()
-            else:
-                move2 = r2.get(MAX_CALC_TIME)
-            result2_game_over,result2_reason = ks.move(CELL_SHEEP_2, move2,reason)
-            if result2_reason != '':
-                reason = result2_reason
-            game_over = game_over or result2_game_over
-        except TimeoutError:
-            game_over = True
-            reason = 'timeout2'
-        p2.close()
-        p2.terminate()
-        p2.join() 
+    else:
+        r2 = p2.apply_async(player2.move_sheep,(2,ks.get_field(),player2_sheep))
+    try:
+        move2 = r2.get(MAX_CALC_TIME)
+        result2_game_over,result2_reason = ks.move(CELL_SHEEP_2, move2,reason)
+        if result2_reason != '':
+            reason = result2_reason
+        game_over = game_over or result2_game_over
+    except TimeoutError:
+        game_over = True
+        reason = 'timeout2'
+    p2.close()
+    p2.terminate()
+    p2.join() 
    
     if i % 2 == 0 and not game_over:
         #wolf1 move
         p3 = Pool()
-        r3 = p3.apply_async(player1.move_wolf,(1,ks.get_field()))
+        if player1.name == 'Random Player':
+            r3 = p3.apply_async(player1.move_wolf,(1,ks.get_field()))
+        else:
+            r3 = p3.apply_async(player1.move_wolf,(1,ks.get_field(),player1_wolf))
         try:
-            if ks.name1 == 'Keyboard Player':
-                move3 = player1.move_wolf()
-            else:
-                move3 = r3.get(MAX_CALC_TIME)
+            move3 = r3.get(MAX_CALC_TIME)
             result3_game_over,result3_reason = ks.move(CELL_WOLF_1, move3,reason)
             if result3_reason != '':
                 reason = result3_reason
@@ -266,15 +265,14 @@ def kingsheep_iteration(i, ks, player1, player2,reason):
         p3.terminate()
         p3.join()
         
-    if i % 2 == 0 and not game_over:    
         #wolf2 move
         p4 = Pool()
-        r4 = p4.apply_async(player2.move_wolf,(2,ks.get_field()))
+        if player2.name == 'Random Player':
+            r4 = p4.apply_async(player2.move_wolf,(2,ks.get_field()))
+        else:
+            r4 = p4.apply_async(player2.move_wolf,(2,ks.get_field(),player2_wolf))
         try:
-            if ks.name2 == 'Keyboard Player':
-                move4 = player2.move_wolf()
-            else:
-                move4 = r4.get(MAX_CALC_TIME)
+            move4 = r4.get(MAX_CALC_TIME)
             result4_game_over,result4_reason = ks.move(CELL_WOLF_2, move4,reason)
             if result4_reason != '':
                 reason = result4_reason
@@ -313,6 +311,21 @@ def kingsheep_play(player1class, player2class, map_name):
     ks.name1 = player1.name
     ks.name2 = player2.name
 
+    #random player is an exception, as it does not use a model
+    if ks.name1 != 'Random Player':
+        player1_sheep = player1.get_sheep_model()
+        player1_wolf = player1.get_wolf_model()
+    else:
+        player1_sheep = None
+        player1_wolf = None
+    
+    if ks.name2 != 'Random Player':
+        player2_sheep = player2.get_sheep_model()
+        player2_wolf = player2.get_wolf_model()
+    else:
+        player2_sheep = None
+        player2_wolf = None
+
     ks.verbosity = verbosity
 
     #   --- PLAY GAME ---
@@ -322,12 +335,12 @@ def kingsheep_play(player1class, player2class, map_name):
 
     if graphics:
         import ksgraphics
-        ksgraphics.init(NO_ITERATIONS, FIELD_WIDTH, FIELD_HEIGHT, ks, player1, player2, debug, verbosity, slowdown)
+        ksgraphics.init(NO_ITERATIONS, FIELD_WIDTH, FIELD_HEIGHT, ks, player1, player2, debug, verbosity, slowdown,player1_sheep,player1_wolf,player2_sheep,player2_wolf)
 
     else:
         iterations_run = 0
         for i in range(1, NO_ITERATIONS+1):
-            game_over,reason = kingsheep_iteration(i, ks, player1, player2,reason)
+            game_over,reason = kingsheep_iteration(i, ks, player1, player2,reason,player1_sheep,player1_wolf,player2_sheep,player2_wolf)
 
             iterations_run += 1
             if game_over:
@@ -420,22 +433,22 @@ def main():
     if args.player1module:
         mod1 = importlib.import_module(args.player1module)
     else:
-        mod1 = importlib.import_module("random_player")
+        mod1 = importlib.import_module("simple_player")
 
     if args.player1name:
         player1class = getattr(mod1, args.player1name)
     else:
-        player1class = getattr(mod1, "RandomPlayer")
+        player1class = getattr(mod1, "SimplePlayer")
 
     if args.player2module:
         mod2 = importlib.import_module(args.player2module)
     else:
-        mod2 = importlib.import_module("random_player")
+        mod2 = importlib.import_module("simpleplayer")
 
     if args.player2name:
         player2class = getattr(mod2, args.player2name)
     else:
-        player2class = getattr(mod2, "RandomPlayer")
+        player2class = getattr(mod2, "SimplePlayer")
 
     if args.graphics:
         graphics = True
