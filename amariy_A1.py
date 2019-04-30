@@ -424,7 +424,13 @@ class Alfunx():
         self.name = "alfunx"
         self.uzh_shortname = "amariy"
 
-    def move_sheep(self, player_nr, field):
+    def get_sheep_model(self):
+        return None
+
+    def get_wolf_model(self):
+        return None
+
+    def move_sheep(self, player_nr, field, sheep_model):
         playfield = Playfield(field)
         wolf = playfield.get_wolf(player_nr)
         sheep = playfield.get_sheep(player_nr)
@@ -484,7 +490,7 @@ class Alfunx():
         print("go:   ", COORD_TO_STRING[best_move])
         return COORD_TO_MOVE_CONST[best_move]
 
-    def move_wolf(self, player_nr, field):
+    def move_wolf(self, player_nr, field, wolf_model):
         playfield = Playfield(field)
         wolf = playfield.get_wolf(player_nr)
         sheep = playfield.get_sheep(player_nr)
