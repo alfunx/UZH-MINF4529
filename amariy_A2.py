@@ -71,7 +71,7 @@ AWARD_GRASS = 1.0
 
 #[Awards]
 AWARD_SHEEP = 10.0
-AWARD_BLOCK_SHEEP = 0.1
+AWARD_BLOCK_SHEEP = 0.3
 
 #[Penalty]
 PENALTY_MOVE_NONE = -1.5
@@ -146,10 +146,6 @@ def evaluate_playfield(playfield, player_nr):
     enemy_sheep = playfield.get_sheep(player_nr % 2 + 1)
 
     score = 0.0
-
-    # Sheep must not be near enemy wolf
-    if is_near(sheep, enemy_wolf):
-        score += PENALTY_NEAR_WOLF
 
     # Sheep must be able to escape
     moves = possible_moves(playfield.fences.union(playfield.figures),
@@ -413,18 +409,23 @@ def sheep_features(field, figure):
 
     # current score is highest
     features.append(1 if scores[(0, 0)] == highest_score else 0)
+    print(COORD_TO_STRING[(0, 0)], ": ", scores[(0, 0)])
 
     # score left is highest
     features.append(1 if scores[(-1, 0)] == highest_score else 0)
+    print(COORD_TO_STRING[(-1, 0)], ": ", scores[(-1, 0)])
 
     # score right is highest
     features.append(1 if scores[(1, 0)] == highest_score else 0)
+    print(COORD_TO_STRING[(1, 0)], ": ", scores[(1, 0)])
 
     # score above is highest
     features.append(1 if scores[(0, -1)] == highest_score else 0)
+    print(COORD_TO_STRING[(0, -1)], ": ", scores[(0, -1)])
 
     # score below is highest
     features.append(1 if scores[(0, 1)] == highest_score else 0)
+    print(COORD_TO_STRING[(0, 1)], ": ", scores[(0, 1)])
 
     # assert all features have been inserted
     assert len(features) == 5
