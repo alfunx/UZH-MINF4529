@@ -12,7 +12,11 @@ game_opts=(
     # 'resources/fortress.map'
     # 'resources/labyrinth.map'
     # 'resources/cross.map'
+    # 'resources/multicross.map'
+    # 'resources/circle.map'
+    # 'resources/tricky.map'
     # 'resources/new.map'
+    # 'resources/get-eaten.map'
     -d
 )
 
@@ -76,19 +80,19 @@ game_opts=(
 #     "${game_opts[@]}" \
 #     -p1m simple_player \
 #     -p1n SimplePlayer \
-#     -p2m amariy_A2 \
+#     -p2m amariy_A3 \
 #     -p2n Snowball
 
 # python "${opts[@]}" kingsheep.py \
 #     "${game_opts[@]}" \
-#     -p1m amariy_A2 \
+#     -p1m amariy_A3 \
 #     -p1n Snowball \
 #     -p2m simple_player \
 #     -p2n SimplePlayer
 
 # python "${opts[@]}" kingsheep.py \
 #     "${game_opts[@]}" \
-#     -p1m amariy_A2 \
+#     -p1m amariy_A3 \
 #     -p1n Snowball \
 #     -p2m amariy_B2 \
 #     -p2n Alfunx
@@ -97,12 +101,12 @@ game_opts=(
 #     "${game_opts[@]}" \
 #     -p1m amariy_B2 \
 #     -p1n Alfunx \
-#     -p2m amariy_A2 \
+#     -p2m amariy_A3 \
 #     -p2n Snowball
 
 # python "${opts[@]}" kingsheep.py \
 #     "${game_opts[@]}" \
-#     -p1m amariy_A2 \
+#     -p1m amariy_A3 \
 #     -p1n Snowball \
 #     -p2m amariy_A1 \
 #     -p2n Alfunx
@@ -111,12 +115,12 @@ game_opts=(
 #     "${game_opts[@]}" \
 #     -p1m amariy_A1 \
 #     -p1n Alfunx \
-#     -p2m amariy_A2 \
+#     -p2m amariy_A3 \
 #     -p2n Snowball
 
 # python "${opts[@]}" kingsheep.py \
 #     "${game_opts[@]}" \
-#     -p1m amariy_A2 \
+#     -p1m amariy_A3 \
 #     -p1n Snowball \
 #     -p2m amariy_A1 \
 #     -p2n Alfunx
@@ -125,7 +129,7 @@ game_opts=(
 #     "${game_opts[@]}" \
 #     -p1m amariy_A1 \
 #     -p1n Alfunx \
-#     -p2m amariy_A2 \
+#     -p2m amariy_A3 \
 #     -p2n Snowball
 
 # python "${opts[@]}" kingsheep.py \
@@ -144,14 +148,28 @@ game_opts=(
 
 # python "${opts[@]}" kingsheep.py \
 #     "${game_opts[@]}" \
-#     -p1m amariy_A2 \
+#     -p1m amariy_A3 \
 #     -p1n Snowball \
 #     -p2m masern_at_IFI \
 #     -p2n Joe
 
+# python "${opts[@]}" kingsheep.py \
+#     "${game_opts[@]}" \
+#     -p1m masern_at_IFI \
+#     -p1n Joe \
+#     -p2m amariy_A3 \
+#     -p2n Snowball
+
+# python "${opts[@]}" kingsheep.py \
+#     "${game_opts[@]}" \
+#     -p1m amariy_A3 \
+#     -p1n Snowball \
+#     -p2m baumann_A2 \
+#     -p2n JoaBau
+
 python "${opts[@]}" kingsheep.py \
     "${game_opts[@]}" \
-    -p1m masern_at_IFI \
-    -p1n Joe \
-    -p2m amariy_A2 \
+    -p1m baumann_A2 \
+    -p1n JoaBau \
+    -p2m amariy_A3 \
     -p2n Snowball
